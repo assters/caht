@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Chat</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous" />
+        
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.6.10/vue.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<style>
+#blink {
+  -webkit-animation: blink 3s linear infinite;
+  animation: blink 3s linear infinite;
+}
+@-webkit-keyframes blink {
+  0% { color: rgba(255, 255, 255, 1); }
+  50% { color: rgba(255, 255, 255, 0); }
+  100% { color: rgba(255, 255, 255, 1); }
+}
+@keyframes blink {
+  0% { color: rgba(255, 255, 255, 1); }
+  50% { color: rgba(255, 255, 255, 0); }
+  100% { color: rgba(255, 255, 255, 1); }
+}
+#smallText {
+	font-size:80%;
+}
+#likeLink {
+	color: #008000;
+}
+#likeLink:hover {
+    color: #800000;
+	text-decoration: underline;
+	}
+.sub-menu {
+    max-height: 15em;
+    overflow-y: scroll;
+}
+
+
+</style>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="col-lg-6 offset-lg-3">
+                <!-- Поле информации -->
+				<div v-if="authenticatedMode">
+                    <p v-for="user in info">
+                        {{user.username}} {{user.type}}
+                    </p>
+                </div>
+				<!-- Поле статуса операции -->
+				<div v-if="waitingMode">
+                    {{opStatus}}
+                </div>
+				<!-- Вход (log-in) -->
+                <div v-if="loginMode">
+                    <h4>Добро пожаловать в чат</h4>
+                    <form @submit.prevent="loginUser">
+                        <div class="form-group col">
+                            <input type="text" class="form-control col-9" v-model="username"
+                                placeholder="Введите имя">
+							<input type="password" class="form-control col-9" v-model="password"
+                                placeholder="Введите пароль">
+							<p>{{opStatus}}</p>
+							<p><div id="likeLink" v-on:click="switchMode('signinMode');">Впервые? Зарегистрироваться!</div></p>
+                            <p><input type="submit" value="Войти" class="btn btn-sm btn-info ml-1"></p>
+                        </div>
+                    </form>
+                </div>
+				<!-- Регистрация (sign-in)-->
+                <div v-if="signinMode">
+                    <h4>Регистрация</h4>
+                    <form @submit.prevent="addUser">
+                        <div class="form-group col">
+                            <input type="text" class="form-control col-9" v-model="username"
+                                placeholder="Введите имя">
+							<input type="password" class="form-control col-9" v-model="password"
+                                placeholder="Введите пароль">
+							<p>{{opStatus}}</p>
+                            <p><input type="submit" value="Зарегистрироваться" class="btn btn-sm btn-info ml-1"></p>
+                        </div>
+                    </form>
+                </div>
+				
+				<div v-if="authenticatedMode || dialogueMode" class="row"><h2>{{username}}</h2></div>
+				<div v-if="authenticatedMode || dialogueMode"class="row"><a href="" id="smallText">Выйти</a></div>
+				<div class="row">
+					<!-- Пользователи чата -->
+					<div v-if="authenticatedMode || dialogueMode" class="form-group col">						
+						<div class="card bg-info">
+							<div class="card-header text-white">Cписок зарегистрированных пользователей</div>
+							<ul class="list-group list-group-flush text-right">
+								<li class="list-group-item" id="likeLink" v-for="user in filteredChatUsers" v-on:click="choseChatPartner(user.name)">{{user.name}}</li>
+							</ul>
+						</div>
+					</div>
+					<div class="col">
+						<!-- Поле диалога чата -->
+						<div class="card bg-info" v-if="dialogueMode">
+							<div class="card-header text-white"><h4>Чат с пользователем {{chatPartner}}</h4></div>
+							<small v-if="typing" id="blink">{{typing}} печатает...</small>
+							<ul class="list-group list-group-flush text-right sub-menu" ref="scrl">								
+								<li class="list-group-item" v-for="message in messages">
+									<span :class="{'float-left':message.type === 1}">
+										{{message.message}}<small>:{{message.user}}</small>
+									</span>
+								</li>
+							</ul>					
+							<div class="card-body">
+								<form @submit.prevent="send">
+									<div class="form-group">
+										<input type="text" class="form-control" v-model="newMessage"
+											placeholder="Введите сообщение"><br>
+										<p><input type="submit" value="Отправить" class="btn btn-sm btn-info ml-1"></p>
+									</div>
+								</form>
+							</div>
+						</div>
+					</div>
+				</div>
+            </div>
+        </div>
+    </div>
+</body>
+<script>
+    var socket = io();
+    let vue = new Vue({
+        el: '#app',
+        data: {
+            newMessage: null,
+            messages: [],
+            typing: false,
+            username: null,
+			password: null,
+			loginMode: true,
+			signinMode: false,
+			waitingMode: false,
+			authenticatedMode: false,
+			dialogueMode: false,
+			opStatus: '',
+			chatPartner: '',
+			authUsers: [],
+            info: [],
+			usersMessagesStory: [],
+        },
+		computed:{
+            filteredChatUsers: function(){
+                return this.authUsers.filter(x => x.name != this.username);
+            }
+        },
+        created() {
+			socket.on('chat-message', (data) => {
+				
+				if (data.userTo != this.username) return; // если не мне, то не обращать внимания
+				if (data.user != this.chatPartner) {
+					this.saveMessageFromXToMe(data);	
+				} else {
+					this.messages.push({
+						message: data.message,
+						type: 1,
+						user: data.user,
+					});	
+					this.chatScrollDown();	
+				}					
+            });				
+            socket.on('typing', (data) => {
+                this.typing = data;
+				setTimeout(() => {
+                    this.info = [];
+					this.typing = false;
+                }, 5000);
+            });
+            socket.on('stopTyping', () => {
+                this.typing = false;
+            });
+			socket.on('completionStatusReturn', (data) => {
+                this.opStatus = data.status;
+				setTimeout(() => {
+                    this.switchMode(data.mode);
+                }, 1500);
+            });				
+            socket.on('joined', (data) => {
+                this.info.push({
+                    username: data.name,
+                    type: 'joined'
+                });
+                setTimeout(() => {
+                    this.info = [];
+                }, 5000);			
+            });
+			socket.on('getUsers', (users) => {
+                this.authUsers = users;
+            });
+        },
+        watch: {
+            newMessage(value) {
+                value ? socket.emit('typing', this.username) : socket.emit('stopTyping')
+            }
+        },
+        methods: {
+            send() {
+                this.messages.push({
+                    message: this.newMessage,
+                    type: 0,
+                    user: 'Me',
+                }				
+				);
+                socket.emit('chat-message', {
+                    message: this.newMessage,
+                    user: this.username,
+					userTo: this.chatPartner,
+					type: 1,
+                });
+                this.newMessage = null;
+				this.chatScrollDown();		
+            },
+			chatScrollDown() {
+				setTimeout(() => {
+						this.$refs.scrl.scrollTop = this.$refs.scrl.scrollHeight;
+					}, 100);
+			},
+            addUser() {			
+                socket.emit('addUser', {name:this.username, password:this.password})
+				this.switchMode("waitingMode");	
+				this.opStatus = "Отправка данных..."
+            },
+			loginUser() {
+                socket.emit('joinToChat', {name:this.username, password:this.password})
+				this.switchMode("waitingMode");				
+				this.opStatus = "Отправка данных...";
+				socket.emit('requestUsers')
+            },
+			saveMessageFromXToMe(data) {
+				index = this.usersMessagesStory.indexOf(this.usersMessagesStory.find(u => u.name == data.user));
+				if (index > -1) {
+					this.usersMessagesStory[index].story.push(data);
+				} else {
+					this.usersMessagesStory.push({
+						name: data.user,
+						story: [data],
+					});
+					
+				}				
+			},
+			replaceStoryForCurrentPartner() {
+				// сохранить историю для текущего партнера, если он есть
+				if (this.chatPartner != '') {
+					index = this.usersMessagesStory.indexOf(u => u.name == this.chatPartner)
+					if (index != -1) {
+						this.usersMessagesStory[index].story = this.messages;
+					} else {
+						this.usersMessagesStory.push({
+							name: this.chatPartner,
+							story: this.messages,
+						});
+					}
+				}
+			},
+			clearOpStatus() {
+				this.opStatus = "";
+            },
+			choseChatPartner(name) {
+				this.replaceStoryForCurrentPartner();
+				this.chatPartner = name;
+			
+				match = this.usersMessagesStory.find(u => u.name == name); 
+				if (match) {
+					// восстановить историю
+					this.messages = match.story;
+				} else {
+					this.messages = [];
+				}
+				
+				this.switchMode("dialogueMode");
+			},
+			switchMode(mode) {	
+				this.clearOpStatus();			
+				switch (mode) {
+				case "dialogueMode":
+					this.dialogueMode = true;
+					this.loginMode = false;
+					this.signinMode = false;
+					this.authenticatedMode = false;
+					this.waitingMode = false;
+					break;
+				case "waitingMode":
+					this.dialogueMode = false;
+					this.loginMode = false;
+					this.signinMode = false;
+					this.authenticatedMode = false;
+					this.waitingMode = true;
+					break;
+				case "signinMode":
+					this.dialogueMode = false;
+					this.loginMode = false;
+					this.signinMode = true;
+					this.authenticatedMode = false;
+					this.waitingMode = false;
+					break;
+				case "authenticatedMode":
+					this.dialogueMode = false;
+					this.loginMode = false;
+					this.signinMode = false;
+					this.authenticatedMode = true;
+					this.waitingMode = false;
+					break;
+				case "loginMode":
+				default:
+					this.dialogueMode = false;
+					this.loginMode = true;
+					this.signinMode = false;
+					this.authenticatedMode = false;
+					this.waitingMode = false;
+					break;				  
+				}
+			}
+        },
+    });
+</script>
+</html>

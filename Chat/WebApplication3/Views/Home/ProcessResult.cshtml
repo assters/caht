@@ -1,0 +1,8 @@
+﻿@model ProcessResultObject
+@{
+    ViewData["Title"] = "Результат";
+}
+<!DOCTYPE html>
+<meta http-equiv="refresh" content="3;url=@Model.Redirect" />
+<p><h4>@Model.Message</h4></p>
+<p>Вы будете перенаправлены через 3 секунды.</p>

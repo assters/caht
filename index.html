@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Explorer</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous" />
+        
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.6.10/vue.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<style>
+#likeLink {
+	color: #008000;
+}
+#likeLink:hover {
+    color: #800000;
+	text-decoration: underline;
+	}
+</style>
+<body>
+	<div class="container">
+    <div id="app">
+		<!-- Поле статуса операции -->
+		<div v-if="waitingMode">
+			{{opStatus}}
+		</div>
+		<!-- Загрузка файла -->
+		<div v-if="loadFileMode">
+			<h1>Upload file</h1>
+			<form action="/upload" method="post" enctype="multipart/form-data">
+				<label>Файл</label><br>
+				<input type="file" name="filedata" /><br><br>
+				<input type="submit" value="Send" />
+			  </form>
+		</div>
+		</div>
+	</div>
+</body>
+<script>
+    var socket = io();
+    let vue = new Vue({
+        el: '#app',
+        data: {
+            loadFileMode: true,  
+			waitingMode: false,
+            info: [],
+        }
+    });
+</script>
+</html>
